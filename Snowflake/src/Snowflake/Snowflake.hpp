@@ -3,9 +3,18 @@
 #include <vector>
 #include <array>
 #include <bitset>
+#include <unordered_map>
+
 
 namespace Snowflake
 {
+
+	template<class TComponent>
+	uint32_t Hash()
+	{
+		return typeid(TComponent).hash_code();
+	}
+
 	using Entity = uint32_t;
 
 	template<class Component>
@@ -30,25 +39,62 @@ namespace Snowflake
 			return entity;
 		}
 
+		bool DestroyEntity(Entity entity)
+		{
+			auto it = std::find(m_Entities.begin(), m_Entities.end(), entity);
+			if(it != m_Entities.end())
+			{
+				std::swap(it, m_Entities.end());
+				m_Entities.pop_back();
+				return true;
+			}
+			return false;
+		}
+
 		template<class TComponent>
 		TComponent& AddComponent(Entity entity)
 		{
+			auto& component = GetPool<TComponent>();
+			component.RegisterEntity(entity);
+			return component.GetComponent(entity);
+		}
 
+		template<class TComponent>
+		bool HasComponent(Entity entity)
+		{
+			auto& component = GetPool<TComponent>();
+			return component.IsEntityRegistered(entity);
+		}
+
+		template<class TComponent>
+		void RemoveComponent(Entity entity)
+		{
+			auto& component = GetPool<TComponent>();
+			component.DeRegisterEntity(entity);
+		}
+
+		template<class TComponent>
+		bool CreateComponent()
+		{
+			auto pool = ComponentPool<TComponent>();
+			size_t hash = typeid(TComponent).hash_code();
+			m_ComponentPools[hash] = *reinterpret_cast<Pool*>(&pool);
+
+			return true;
 		}
 
 	private:
-		static std::unique_ptr<Snowflake::Manager> s_Instance;
-		std::vector<Entity> m_Entities;
-		std::vector<Pool> m_ComponentPools;
 
 		template<class TComponent>
-		ComponentPool<TComponent>& GetOrCreatePool()
+		ComponentPool<TComponent>& GetPool()
 		{
-			for (size_t i = 0; i < m_ComponentPools.size(); i++)
-			{
-				if()
-			}
+			return *reinterpret_cast<ComponentPool<TComponent>*>(&m_ComponentPools[Hash<TComponent>()]);
 		}
+
+		static std::unique_ptr<Snowflake::Manager> s_Instance;
+		std::vector<Entity> m_Entities;
+
+		std::unordered_map<size_t, Pool> m_ComponentPools;
 
 	};
 	std::unique_ptr<Snowflake::Manager> Manager::s_Instance;
@@ -58,7 +104,7 @@ namespace Snowflake
 		friend Manager;
 	public:
 		uint16_t GetId() const { return m_Id; }
-	private:
+	protected:
 		void SetId(uint16_t id) { m_Id = id; }
 
 		uint16_t m_Id = -1;
@@ -70,34 +116,37 @@ namespace Snowflake
 		friend Manager;
 	public:
 
+		
+
 		void RegisterEntity(Entity entity)
 		{
 			if (!m_RegisteredEntities[entity])
 			{
 				m_RegisteredEntities[entity] = true;
 			}
-			else
-			{
-				//TODO: entity already there;
-			}
 		}
 
-		Component& GetType()
+		void DeRegisterEntity(Entity entity)
 		{
-			return Component;
+			m_RegisteredEntities[entity] = false;
+		}
+
+		bool IsEntityRegistered(Entity entity)
+		{
+			return m_RegisteredEntities[entity];
 		}
 
 		Component& GetComponent(Entity entity)
 		{
 			if (m_RegisteredEntities[entity])
 			{
-				return Component;
+				return Component();
 			}
 			return m_Components[entity];
 		}
 	private:
 		std::array<Component, 8192> m_Components;
-		std::bitset<8192> m_RegisteredEntities;
+		std::bitset<8192> m_RegisteredEntities = {false};
 	};
 
 }
