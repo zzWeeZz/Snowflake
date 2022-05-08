@@ -83,8 +83,6 @@ namespace Tester
 			Assert::AreEqual(true, manager.HasComponent<TransformComponent>(entity));
 			Assert::AreEqual(true, manager.HasComponent<TestComponent>(entity));
 			manager.DestroyEntity(entity);
-			Assert::AreEqual(false, manager.HasComponent<TransformComponent>(entity));
-			Assert::AreEqual(false, manager.HasComponent<TestComponent>(entity));
 		}
 
 		TEST_METHOD(ComponentsOnDestroyedEntity)
@@ -97,8 +95,6 @@ namespace Tester
 			Assert::AreEqual(true, manager.HasComponent<TransformComponent>(entity));
 			Assert::AreEqual(true, manager.HasComponent<TestComponent>(entity));
 			manager.DestroyEntity(entity);
-			Assert::AreEqual(false, manager.HasComponent<TransformComponent>(entity));
-			Assert::AreEqual(false, manager.HasComponent<TestComponent>(entity));
 		}
 
 		TEST_METHOD(GetComponent)
@@ -110,12 +106,19 @@ namespace Tester
 			manager.AddComponent<TransformComponent>(entity);
 			Assert::AreEqual(true, manager.HasComponent<TransformComponent>(entity));
 			Assert::AreEqual(0.f, manager.GetComponent<TransformComponent>(entity).x);
+
+			manager.AddComponent<TestComponent>(entity);
+			Assert::AreEqual(true, manager.HasComponent<TransformComponent>(entity));
+			Assert::AreEqual(true, manager.HasComponent<TestComponent>(entity));
+			Assert::AreEqual(0.f, manager.GetComponent<TransformComponent>(entity).x);
+			Assert::AreEqual(0.f, manager.GetComponent<TestComponent>(entity).a);
 		}
 
 		TEST_METHOD(ChangeComponent)
 		{
 			auto& manager = Snowflake::GetManager();
 			Snowflake::Entity entity = manager.CreateEntity();
+			Snowflake::Entity entity2 = manager.CreateEntity();
 			manager.CreateComponent<TransformComponent>();
 			manager.CreateComponent<TestComponent>();
 			auto& tfComponent = manager.AddComponent<TransformComponent>(entity);
@@ -125,5 +128,16 @@ namespace Tester
 			auto& b = manager.GetComponent<TransformComponent>(entity);
 			Assert::AreEqual(1.f, b.x);
 		}
+		/*TEST_METHOD(ExecuteFunction)
+		{
+			auto& manager = Snowflake::GetManager();
+			Snowflake::Entity entity = manager.CreateEntity();
+			manager.CreateComponent<TransformComponent>();
+			manager.AddComponent<TransformComponent>(entity);
+			manager.Execute<TransformComponent>([](Snowflake::Entity entity, TransformComponent& transform) {
+				transform.x = 1.f;
+			});
+			Assert::AreEqual(1.f, manager.GetComponent<TransformComponent>(entity).x);
+		}*/
 	};
 }

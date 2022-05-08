@@ -1,8 +1,10 @@
 #pragma once
+#include <algorithm>
 #include <cstdint>
 #include <vector>
 #include <array>
 #include <bitset>
+#include <cassert>
 #include <unordered_map>
 #include <functional>
 
@@ -43,7 +45,7 @@ namespace Snowflake
 		{
 			if (entity == InvalidEntity) return false;
 			auto it = std::find(m_Entities.begin(), m_Entities.end(), entity);
-			if(it != m_Entities.end())
+			if (it != m_Entities.end())
 			{
 				std::swap(*it, m_Entities.back());
 				m_Entities.pop_back();
@@ -63,7 +65,10 @@ namespace Snowflake
 		template<class TComponent>
 		TComponent& AddComponent(Entity entity)
 		{
-			if (entity == InvalidEntity) return TComponent();
+			if (entity == InvalidEntity)
+			{
+				assert(false && "Invalid entity");
+			}
 			auto component = static_cast<ComponentPool<TComponent>*>(m_ComponentPools[typeid(TComponent).hash_code()]);
 			component->RegisterEntity(entity);
 			return component->GetComponent(entity);
@@ -73,7 +78,10 @@ namespace Snowflake
 		template<class TComponent>
 		bool HasComponent(Entity entity)
 		{
-			if (entity == InvalidEntity) return false;
+			if (entity == InvalidEntity)
+			{
+				assert(false && "Invalid entity");
+			}
 			auto& component = *static_cast<ComponentPool<TComponent>*>(m_ComponentPools[typeid(TComponent).hash_code()]);;
 			return component.IsEntityRegistered(entity);
 		}
@@ -81,10 +89,9 @@ namespace Snowflake
 		template<class TComponent>
 		TComponent& GetComponent(Entity entity)
 		{
-			if(!HasComponent<TComponent>(entity))
+			if (entity == InvalidEntity)
 			{
-				// assert
-				return TComponent();
+				assert(false && "Invalid entity");
 			}
 			auto& component = *static_cast<ComponentPool<TComponent>*>(m_ComponentPools[typeid(TComponent).hash_code()]);
 			return component.GetComponent(entity);
@@ -93,7 +100,10 @@ namespace Snowflake
 		template<class TComponent>
 		void RemoveComponent(Entity entity)
 		{
-			if (entity == InvalidEntity) return;
+			if (entity == InvalidEntity)
+			{
+				assert(false && "Invalid entity");
+			}
 			auto& component = *static_cast<ComponentPool<TComponent>*>(m_ComponentPools[typeid(TComponent).hash_code()]);;
 			component.DeRegisterEntity(entity);
 		}
@@ -114,11 +124,11 @@ namespace Snowflake
 			return s_Instance;
 		}
 	private:
-		
+
 		static Snowflake::Manager s_Instance;
 		std::vector<Entity> m_Entities;
 
-		std::unordered_map<size_t, void*> m_ComponentPools ;
+		std::unordered_map<size_t, void*> m_ComponentPools;
 
 	};
 	Snowflake::Manager Manager::s_Instance;
@@ -155,7 +165,7 @@ namespace Snowflake
 
 		Component& GetComponent(Entity entity)
 		{
-			if (m_RegisteredEntities[entity])
+			if (!m_RegisteredEntities[entity])
 			{
 				return Component();
 			}
@@ -163,7 +173,7 @@ namespace Snowflake
 		}
 	private:
 		std::array<Component, 8192> m_Components = {};
-		std::bitset<8192> m_RegisteredEntities = {false};
+		std::bitset<8192> m_RegisteredEntities = { false };
 	};
 
 }
