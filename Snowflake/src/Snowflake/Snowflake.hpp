@@ -4,16 +4,12 @@
 #include <array>
 #include <bitset>
 #include <unordered_map>
-
+#include <functional>
 
 namespace Snowflake
 {
 
-	template<class TComponent>
-	uint32_t Hash()
-	{
-		return typeid(TComponent).hash_code();
-	}
+	constexpr uint32_t InvalidEntity = ~0;
 
 	using Entity = uint32_t;
 
@@ -22,14 +18,18 @@ namespace Snowflake
 
 	class Pool;
 
+	template<class TComponent>
+	uint32_t Hash()
+	{
+		return typeid(TComponent).hash_code();
+	}
+
 	class Manager
 	{
 	public:
-		static Manager& GetManager() noexcept
+		Manager()
 		{
-			if (!s_Instance)
-				s_Instance = std::make_unique<Snowflake::Manager>();
-			return *Manager::s_Instance;
+			s_Instance = *this;
 		}
 
 		Entity CreateEntity()
@@ -39,84 +39,101 @@ namespace Snowflake
 			return entity;
 		}
 
-		bool DestroyEntity(Entity entity)
+		bool DestroyEntity(Entity& entity)
 		{
+			if (entity == InvalidEntity) return false;
 			auto it = std::find(m_Entities.begin(), m_Entities.end(), entity);
 			if(it != m_Entities.end())
 			{
-				std::swap(it, m_Entities.end());
+				std::swap(*it, m_Entities.back());
 				m_Entities.pop_back();
+				entity = InvalidEntity;
 				return true;
 			}
 			return false;
 		}
 
+		bool ValidateEntity(Entity entity)
+		{
+			auto it = std::find(m_Entities.begin(), m_Entities.end(), entity);
+			return it != m_Entities.end();
+		}
+
+		// TODO: Create pool if it does not exist.
 		template<class TComponent>
 		TComponent& AddComponent(Entity entity)
 		{
-			auto& component = GetPool<TComponent>();
-			component.RegisterEntity(entity);
-			return component.GetComponent(entity);
+			if (entity == InvalidEntity) return TComponent();
+			auto component = static_cast<ComponentPool<TComponent>*>(m_ComponentPools[typeid(TComponent).hash_code()]);
+			component->RegisterEntity(entity);
+			return component->GetComponent(entity);
 		}
 
+		// TODO: add support to check if the pool exists
 		template<class TComponent>
 		bool HasComponent(Entity entity)
 		{
-			auto& component = GetPool<TComponent>();
+			if (entity == InvalidEntity) return false;
+			auto& component = *static_cast<ComponentPool<TComponent>*>(m_ComponentPools[typeid(TComponent).hash_code()]);;
 			return component.IsEntityRegistered(entity);
+		}
+
+		template<class TComponent>
+		TComponent& GetComponent(Entity entity)
+		{
+			if(!HasComponent<TComponent>(entity))
+			{
+				// assert
+				return TComponent();
+			}
+			auto& component = *static_cast<ComponentPool<TComponent>*>(m_ComponentPools[typeid(TComponent).hash_code()]);
+			return component.GetComponent(entity);
 		}
 
 		template<class TComponent>
 		void RemoveComponent(Entity entity)
 		{
-			auto& component = GetPool<TComponent>();
+			if (entity == InvalidEntity) return;
+			auto& component = *static_cast<ComponentPool<TComponent>*>(m_ComponentPools[typeid(TComponent).hash_code()]);;
 			component.DeRegisterEntity(entity);
 		}
 
 		template<class TComponent>
 		bool CreateComponent()
 		{
-			auto pool = ComponentPool<TComponent>();
 			size_t hash = typeid(TComponent).hash_code();
-			m_ComponentPools[hash] = *reinterpret_cast<Pool*>(&pool);
-
+			m_ComponentPools[hash] = new ComponentPool<TComponent>();
 			return true;
 		}
 
-	private:
+		//TODO: Add Execute function.
 
-		template<class TComponent>
-		ComponentPool<TComponent>& GetPool()
+
+		static Manager& GetManager()
 		{
-			return *reinterpret_cast<ComponentPool<TComponent>*>(&m_ComponentPools[Hash<TComponent>()]);
+			return s_Instance;
 		}
-
-		static std::unique_ptr<Snowflake::Manager> s_Instance;
+	private:
+		
+		static Snowflake::Manager s_Instance;
 		std::vector<Entity> m_Entities;
 
-		std::unordered_map<size_t, Pool> m_ComponentPools;
+		std::unordered_map<size_t, void*> m_ComponentPools ;
 
 	};
-	std::unique_ptr<Snowflake::Manager> Manager::s_Instance;
+	Snowflake::Manager Manager::s_Instance;
 
-	class Pool
+	inline Manager& GetManager()
 	{
-		friend Manager;
-	public:
-		uint16_t GetId() const { return m_Id; }
-	protected:
-		void SetId(uint16_t id) { m_Id = id; }
+		return Manager::GetManager();
+	}
 
-		uint16_t m_Id = -1;
-	};
 
 	template<class Component>
-	class ComponentPool : Pool
+	class ComponentPool
 	{
 		friend Manager;
 	public:
-
-		
 
 		void RegisterEntity(Entity entity)
 		{
@@ -145,7 +162,7 @@ namespace Snowflake
 			return m_Components[entity];
 		}
 	private:
-		std::array<Component, 8192> m_Components;
+		std::array<Component, 8192> m_Components = {};
 		std::bitset<8192> m_RegisteredEntities = {false};
 	};
 
