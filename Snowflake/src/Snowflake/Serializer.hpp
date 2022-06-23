@@ -38,7 +38,7 @@ namespace Snowflake
 			{
 				for (auto it : m_Registry.m_ComponentPools)
 				{
-					if (it.second->IsEntityRegistered(entity))
+					if (it.second.IsEntityRegistered(entity))
 					{
 						currentEntityComponents.push_back(it.first);
 						entityByteLength += componentSizes[it.first];
@@ -48,7 +48,7 @@ namespace Snowflake
 				for (auto it : currentEntityComponents)
 				{
 					writeFile.write(reinterpret_cast<char*>(&componentSizes[it]), sizeof(size_t));
-					auto pCompData = m_Registry.m_ComponentPools[it]->GetComponentData(entity);
+					auto pCompData = m_Registry.m_ComponentPools[it].GetComponentData(entity);
 					
 					writeFile.write(reinterpret_cast<char*>(&pCompData[0]), componentSizes[it]);
 				}
@@ -84,6 +84,9 @@ namespace Snowflake
 				std::vector<uint8_t> componentData;
 				componentData.resize(componentLength);
 				readFile.read(reinterpret_cast<char*>(&componentData[0]), componentLength);
+				SnowID readID;
+				memcpy(&readID, componentData.data(), sizeof(SnowID));
+				m_Registry.AddComponentFromData(componentData, readID, entity);
 				entityByteLength -= componentLength;
 
 			}
