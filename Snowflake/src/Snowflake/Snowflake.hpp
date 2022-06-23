@@ -7,10 +7,15 @@
 #include <cassert>
 #include <unordered_map>
 #include <functional>
+#include "SnowID.h"
+#define COMPONENT(comp) struct comp \
+						
+#define REGISTER_COMPONENT(GUID) const SnowID hashID = GUID;
 
 namespace Snowflake
 {
-
+	inline std::unordered_map<SnowID, size_t> componentSizes;
+	inline std::unordered_map<SnowID,type_info> componentTemplate;
 	constexpr uint32_t InvalidEntity = ~0;
 
 	using Entity = uint32_t;
@@ -18,23 +23,21 @@ namespace Snowflake
 	template<class Component>
 	class ComponentPool;
 
-	
 	class IPool
 	{
 	public:
 		virtual void RegisterEntity(Entity entity) = 0;
 		virtual void DeRegisterEntity(Entity entity) = 0;
 		virtual bool IsEntityRegistered(Entity entity) = 0;
+		virtual std::vector<uint8_t> GetComponentData(Entity entity) = 0;
 	};
 
-	class Manager
+	class Registry
 	{
+#ifdef USE_SERIALIZER
+		friend class RegistrySerializer;
+#endif
 	public:
-		Manager()
-		{
-			s_Instance = *this;
-		}
-
 		Entity CreateEntity()
 		{
 			Entity entity = m_Entities.size();
@@ -69,7 +72,7 @@ namespace Snowflake
 			return it != m_Entities.end();
 		}
 
-		// TODO: Create pool if it does not exist.
+		
 		template<class TComponent>
 		TComponent& AddComponent(Entity entity)
 		{
@@ -80,7 +83,7 @@ namespace Snowflake
 			auto& pool = MakeOrGetPool<TComponent>();
 
 			pool.RegisterEntity(entity);
-			m_Registry[entity].push_back(typeid(TComponent).hash_code());
+			m_Registry[entity].push_back(TComponent().hashID);
 			return pool.GetComponent(entity);
 		}
 
@@ -120,7 +123,7 @@ namespace Snowflake
 			auto& pool = MakeOrGetPool<TComponent>();
 			pool.DeRegisterEntity(entity);
 			auto& registry = m_Registry[entity];
-			auto it = std::find(registry.begin(), registry.end(), typeid(TComponent).hash_code());
+			auto it = std::find(registry.begin(), registry.end(), TComponent().hashID);
 			if (it != registry.end())
 			{
 				registry.erase(it);
@@ -147,6 +150,16 @@ namespace Snowflake
 			}
 			return (HasComponent<TComponents>(entity) && ...);
 		}
+
+		template<class TFunction>
+		void ForEach(TFunction&& func)
+		{
+			for (auto entity : m_Entities)
+			{
+				func(entity);
+			}
+		}
+
 		template<class ...TComponents, class TFunction>
 		void Execute(TFunction&& func)
 		{
@@ -158,20 +171,23 @@ namespace Snowflake
 				}
 			}
 		}
-		static Manager& GetManager()
-		{
-			return s_Instance;
-		}
 	private:
+
+		void AddComponentFromData(std::vector<uint8_t>& data, SnowID& id, Entity entt)
+		{
+			/*AddComponent<>()*/
+		}
 
 		template<class TComponent>
 		ComponentPool<TComponent>& MakeOrGetPool()
 		{
-			size_t hash = typeid(TComponent).hash_code();
+			SnowID hash = TComponent().hashID;
 			auto it = m_ComponentPools.find(hash);
 			if (it == m_ComponentPools.end())
 			{
 				m_ComponentPools[hash] = new ComponentPool<TComponent>();
+				componentSizes[hash] = sizeof(TComponent);
+				//componentTemplate[hash] = TComponent;
 			}
 			return *static_cast<ComponentPool<TComponent>*>(m_ComponentPools[hash]);
 		}
@@ -181,40 +197,32 @@ namespace Snowflake
 			return *static_cast<ComponentPool*>(m_ComponentPools[hash]);
 		}
 
-		static Snowflake::Manager s_Instance;
 		std::vector<Entity> m_Entities;
-		std::unordered_map<Entity, std::vector<size_t>> m_Registry;
-		std::unordered_map<size_t, void*> m_ComponentPools;
+		std::unordered_map<Entity, std::vector<SnowID>> m_Registry;
+		std::unordered_map<SnowID, IPool*> m_ComponentPools;
 
 	};
-	Snowflake::Manager Manager::s_Instance;
-
-	inline Manager& GetManager()
-	{
-		return Manager::GetManager();
-	}
-
 	
 
 	template<class Component>
 	class ComponentPool : public IPool
 	{
-		friend Manager;
+		friend Registry;
 	public:
 
 		void RegisterEntity(Entity entity) override
 		{
 			if (!m_RegisteredEntities[entity])
 			{
-				m_Components[entity] = Component();
 				m_RegisteredEntities[entity] = true;
+				memcpy(&m_Components[entity], &m_Components[m_RegisteredEntities.size()], sizeof(Component));
 			}
 		}
 
 		void DeRegisterEntity(Entity entity) override
 		{
 			m_RegisteredEntities[entity] = false;
-			m_Components[entity] = Component();
+			memcpy(&m_Components[entity], &m_Components[m_RegisteredEntities.size()], sizeof(Component));
 		}
 
 		bool IsEntityRegistered(Entity entity)override
@@ -226,8 +234,21 @@ namespace Snowflake
 		{
 			return m_Components[entity];
 		}
+
+		std::vector<uint8_t> GetComponentData(Entity entity) override
+		{
+			std::vector<uint8_t> data;
+			data.resize(sizeof(m_Components[m_RegisteredEntities.size()]));
+			memcpy(data.data(), &m_Components[m_RegisteredEntities.size()], sizeof(m_Components[m_RegisteredEntities.size()]));
+			return data;
+		}
 	private:
-		std::array<Component, 8192> m_Components = {};
+#ifdef COMPONENT_POOL_SIZE
+		std::array<Component, COMPONENT_POOL_SIZE + 1> m_Components = {};
+		std::bitset<COMPONENT_POOL_SIZE> m_RegisteredEntities = { false };
+#else
+		std::array<Component, 8192 + 1> m_Components = {};
 		std::bitset<8192> m_RegisteredEntities = { false };
+#endif
 	};
 }

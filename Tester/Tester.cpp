@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "CppUnitTest.h"
+#include "Snowflake/Serializer.hpp"
 #include "Snowflake/Snowflake.hpp"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -13,7 +14,7 @@ namespace Tester
 
 		TEST_METHOD(EntityCreation)
 		{
-			auto& manager = Snowflake::Manager::GetManager();
+			Snowflake::Registry manager;
 			Snowflake::Entity entity1 = manager.CreateEntity();
 			Snowflake::Entity entity2 = manager.CreateEntity();
 			Snowflake::Entity entity3 = manager.CreateEntity();
@@ -28,7 +29,7 @@ namespace Tester
 
 		TEST_METHOD(EntityDestruction)
 		{
-			auto& manager = Snowflake::Manager::GetManager();
+			Snowflake::Registry manager;
 			Snowflake::Entity entity1 = manager.CreateEntity();
 			Snowflake::Entity entity2 = manager.CreateEntity();
 			Snowflake::Entity entity3 = manager.CreateEntity();
@@ -42,24 +43,28 @@ namespace Tester
 			Assert::AreEqual(Snowflake::InvalidEntity, entity3);
 		}
 	};
+	COMPONENT(TransformComponent)
+	{
+		REGISTER_COMPONENT( "{4A34E93D-A5EC-400F-A973-D38F981E2F0E}"_guid);
+		float x = 0;
+		float y = 0;
+	};
+
+	COMPONENT(TestComponent)
+	{
+		REGISTER_COMPONENT( "{AA590468-495C-4EB0-BEDD-1950F3631251}"_guid);
+		float a = 0;
+		float b = 0;
+		float c = 0;
+	};
+
 	TEST_CLASS(ComponentHandlíng)
 	{
 	public:
-		struct TransformComponent
-		{
-			float x = 0;
-			float y = 0;
-		};
-
-		struct TestComponent
-		{
-			float a = 0;
-			float b = 0;
-			float c = 0;
-		};
+		
 		TEST_METHOD(AddSingleComponent)
 		{
-			auto& manager = Snowflake::Manager::GetManager();
+			Snowflake::Registry manager;
 			Snowflake::Entity entity = manager.CreateEntity();
 			manager.AddComponent<TransformComponent>(entity);
 			Assert::AreEqual(true, manager.HasComponent<TransformComponent>(entity));
@@ -69,7 +74,7 @@ namespace Tester
 
 		TEST_METHOD(AddMultipleComponents)
 		{
-			auto& manager = Snowflake::Manager::GetManager();
+			Snowflake::Registry manager;
 			Snowflake::Entity entity = manager.CreateEntity();
 			manager.AddComponent<TransformComponent>(entity);
 			manager.AddComponent<TestComponent>(entity);
@@ -80,8 +85,7 @@ namespace Tester
 
 		TEST_METHOD(ComponentsOnDestroyedEntity)
 		{
-
-			auto& manager = Snowflake::Manager::GetManager();
+			Snowflake::Registry manager;
 			Snowflake::Entity entity = manager.CreateEntity();
 			manager.AddComponent<TransformComponent>(entity);
 			manager.AddComponent<TestComponent>(entity);
@@ -92,7 +96,7 @@ namespace Tester
 
 		TEST_METHOD(RemoveComponent)
 		{
-			auto& manager = Snowflake::Manager::GetManager();
+			Snowflake::Registry manager;
 			Snowflake::Entity entity = manager.CreateEntity();
 			manager.AddComponent<TransformComponent>(entity);
 			manager.AddComponent<TestComponent>(entity);
@@ -114,7 +118,7 @@ namespace Tester
 
 		TEST_METHOD(GetComponent)
 		{
-			auto& manager = Snowflake::GetManager();
+			Snowflake::Registry manager;
 			Snowflake::Entity entity = manager.CreateEntity();
 			manager.AddComponent<TransformComponent>(entity);
 			Assert::AreEqual(true, manager.HasComponent<TransformComponent>(entity));
@@ -130,7 +134,7 @@ namespace Tester
 
 		TEST_METHOD(ChangeComponent)
 		{
-			auto& manager = Snowflake::GetManager();
+			Snowflake::Registry manager;
 			Snowflake::Entity entity = manager.CreateEntity();
 			Snowflake::Entity entity2 = manager.CreateEntity();
 			auto& tfComponent = manager.AddComponent<TransformComponent>(entity);
@@ -142,9 +146,22 @@ namespace Tester
 			manager.DestroyEntity(entity);
 			manager.DestroyEntity(entity2);
 		}
+
+		TEST_METHOD(ChangeComponentOnDestroyedEntity)
+		{
+			Snowflake::Registry registry;
+			Snowflake::Entity entt = registry.CreateEntity();
+			registry.AddComponent<TransformComponent>(entt).x = 4;
+			Assert::AreEqual(4.f, registry.GetComponent<TransformComponent>(entt).x);
+			registry.DestroyEntity(entt);
+			Snowflake::Entity newEntt = registry.CreateEntity();
+			registry.AddComponent<TransformComponent>(newEntt);
+			Assert::AreEqual(0.f, registry.GetComponent<TransformComponent>(newEntt).x);
+		}
+
 		TEST_METHOD(ExecuteFunction)
 		{
-			auto& manager = Snowflake::GetManager();
+			Snowflake::Registry manager;
 
 			{
 				Snowflake::Entity entity = manager.CreateEntity();
@@ -197,5 +214,47 @@ namespace Tester
 			Assert::AreEqual(0.f, manager.GetComponent<TransformComponent>(entity3).x);
 		}
 
+	};
+	TEST_CLASS(Serialization)
+	{
+	public:
+		TEST_METHOD(WriteToFile)
+		{
+			Snowflake::Registry registry;
+			auto ent = registry.CreateEntity();
+			registry.AddComponent<TransformComponent>(ent);
+			Snowflake::RegistrySerializer serializer(registry);
+			Assert::IsTrue( serializer.Serialize("SingleComponent.ett"));
+		}
+		TEST_METHOD(WriteMultibleComponentsToFile)
+		{
+			Snowflake::Registry registry;
+			auto ent = registry.CreateEntity();
+			registry.AddComponent<TransformComponent>(ent);
+			registry.AddComponent<TestComponent>(ent);
+			Snowflake::RegistrySerializer serializer(registry);
+			Assert::IsTrue(serializer.Serialize("MultiComponent.ett"));
+		}
+
+		TEST_METHOD(ReadAndWriteToFile)
+		{
+			Snowflake::Registry registry;
+			auto ent = registry.CreateEntity();
+			registry.AddComponent<TransformComponent>(ent);
+			Snowflake::RegistrySerializer serializer(registry);
+			Assert::IsTrue(serializer.Serialize("SingleComponentRead.ett"));
+			Assert::IsTrue(serializer.Deserialize("SingleComponentRead.ett"));
+		}
+
+		TEST_METHOD(ReadAndWriteMultibleComponentsToFile)
+		{
+			Snowflake::Registry registry;
+			auto ent = registry.CreateEntity();
+			registry.AddComponent<TransformComponent>(ent);
+			registry.AddComponent<TestComponent>(ent);
+			Snowflake::RegistrySerializer serializer(registry);
+			Assert::IsTrue(serializer.Serialize("MultiComponentRead.ett"));
+			Assert::IsTrue(serializer.Deserialize("MultiComponentRead.ett"));
+		}
 	};
 }
