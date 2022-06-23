@@ -15,21 +15,66 @@
 namespace Snowflake
 {
 	inline std::unordered_map<SnowID, size_t> componentSizes;
-	inline std::unordered_map<SnowID,type_info> componentTemplate;
 	constexpr uint32_t InvalidEntity = ~0;
 
 	using Entity = uint32_t;
+	using ByteSet = std::vector<uint8_t>;
 
-	template<class Component>
-	class ComponentPool;
-
-	class IPool
+	class ComponentPool
 	{
+		friend class Registry;
 	public:
-		virtual void RegisterEntity(Entity entity) = 0;
-		virtual void DeRegisterEntity(Entity entity) = 0;
-		virtual bool IsEntityRegistered(Entity entity) = 0;
-		virtual std::vector<uint8_t> GetComponentData(Entity entity) = 0;
+		ComponentPool() = default;
+		ComponentPool(SnowID id) : m_Id(id)
+		{
+		}
+		template<class T>
+		void RegisterEntity(Entity entity)
+		{
+			if (m_ComponentMap.find(entity) == m_ComponentMap.end())
+			{
+				m_ComponentMap[entity] = ByteSet();
+				m_ComponentMap[entity].resize(sizeof(T));
+				memcpy(m_ComponentMap[entity].data(), &T(), sizeof(T));
+			}
+		}
+
+		void RegisterEntity(Entity entity, ByteSet& byteSet)
+		{
+			if (m_ComponentMap.find(entity) == m_ComponentMap.end())
+			{
+				m_ComponentMap[entity] = ByteSet();
+				m_ComponentMap[entity].resize(byteSet.size());
+				memcpy(m_ComponentMap[entity].data(), byteSet.data(), byteSet.size());
+			}
+		}
+
+		void DeRegisterEntity(Entity entity)
+		{
+			m_ComponentMap.erase(entity);
+		}
+
+		bool IsEntityRegistered(Entity entity)
+		{
+			return m_ComponentMap.find(entity) != m_ComponentMap.end();
+		}
+
+		template<typename T>
+		T& GetComponent(Entity entity)
+		{
+			return *(T*)(m_ComponentMap[entity].data());
+		}
+
+		std::vector<uint8_t> GetComponentData(Entity entity)
+		{
+			std::vector<uint8_t> data;
+			data.resize(m_ComponentMap[entity].size());
+			memcpy(data.data(), m_ComponentMap[entity].data(), m_ComponentMap[entity].size());
+			return data;
+		}
+	private:
+		SnowID m_Id;
+		std::unordered_map<Entity, ByteSet> m_ComponentMap;
 	};
 
 	class Registry
@@ -57,7 +102,7 @@ namespace Snowflake
 				m_Entities.pop_back();
 				while (!m_Registry[entity].empty())
 				{
-					static_cast<IPool*>(m_ComponentPools[m_Registry[entity].back()])->DeRegisterEntity(entity);
+					m_ComponentPools[m_Registry[entity].back()].DeRegisterEntity(entity);
 					m_Registry[entity].pop_back();
 				}
 				entity = InvalidEntity;
@@ -82,9 +127,9 @@ namespace Snowflake
 			}
 			auto& pool = MakeOrGetPool<TComponent>();
 
-			pool.RegisterEntity(entity);
+			pool.template RegisterEntity<TComponent>(entity);
 			m_Registry[entity].push_back(TComponent().hashID);
-			return pool.GetComponent(entity);
+			return pool.template GetComponent<TComponent>(entity);
 		}
 
 		template<class TComponent>
@@ -97,7 +142,7 @@ namespace Snowflake
 			auto& component = MakeOrGetPool<TComponent>();
 			if (HasComponent<TComponent>(entity))
 			{
-				return &component.GetComponent(entity);
+				return &component.GetComponent<TComponent>(entity);
 			}
 			return nullptr;
 		}
@@ -110,7 +155,7 @@ namespace Snowflake
 				throw std::invalid_argument("GetComponent called with invalid entity.");
 			}
 			auto& component = MakeOrGetPool<TComponent>();
-			return component.GetComponent(entity);
+			return component.GetComponent<TComponent>(entity);
 		}
 
 		template<class TComponent>
@@ -175,80 +220,40 @@ namespace Snowflake
 
 		void AddComponentFromData(std::vector<uint8_t>& data, SnowID& id, Entity entt)
 		{
-			/*AddComponent<>()*/
+			if (entt == InvalidEntity)
+			{
+				throw std::invalid_argument("AddComponent called with invalid entity.");
+			}
+			
+			auto it = m_ComponentPools.find(id);
+			if (it == m_ComponentPools.end())
+			{
+				m_ComponentPools[id] = ComponentPool(id);
+				componentSizes[id] = data.size();
+			}
+			auto& pool = m_ComponentPools[id];
+			
+
+			pool.RegisterEntity(entt, data);
+			m_Registry[entt].push_back(id);
 		}
 
 		template<class TComponent>
-		ComponentPool<TComponent>& MakeOrGetPool()
+		ComponentPool& MakeOrGetPool()
 		{
 			SnowID hash = TComponent().hashID;
 			auto it = m_ComponentPools.find(hash);
 			if (it == m_ComponentPools.end())
 			{
-				m_ComponentPools[hash] = new ComponentPool<TComponent>();
+				m_ComponentPools[hash] = ComponentPool(hash);
 				componentSizes[hash] = sizeof(TComponent);
-				//componentTemplate[hash] = TComponent;
 			}
-			return *static_cast<ComponentPool<TComponent>*>(m_ComponentPools[hash]);
-		}
-		template<class TComponent>
-		ComponentPool<TComponent>& GetPoolWithHash(size_t hash)
-		{
-			return *static_cast<ComponentPool*>(m_ComponentPools[hash]);
+			return m_ComponentPools[hash];
 		}
 
 		std::vector<Entity> m_Entities;
 		std::unordered_map<Entity, std::vector<SnowID>> m_Registry;
-		std::unordered_map<SnowID, IPool*> m_ComponentPools;
+		std::unordered_map<SnowID, ComponentPool> m_ComponentPools;
 
-	};
-	
-
-	template<class Component>
-	class ComponentPool : public IPool
-	{
-		friend Registry;
-	public:
-
-		void RegisterEntity(Entity entity) override
-		{
-			if (!m_RegisteredEntities[entity])
-			{
-				m_RegisteredEntities[entity] = true;
-				memcpy(&m_Components[entity], &m_Components[m_RegisteredEntities.size()], sizeof(Component));
-			}
-		}
-
-		void DeRegisterEntity(Entity entity) override
-		{
-			m_RegisteredEntities[entity] = false;
-			memcpy(&m_Components[entity], &m_Components[m_RegisteredEntities.size()], sizeof(Component));
-		}
-
-		bool IsEntityRegistered(Entity entity)override
-		{
-			return m_RegisteredEntities[entity];
-		}
-
-		Component& GetComponent(Entity entity)
-		{
-			return m_Components[entity];
-		}
-
-		std::vector<uint8_t> GetComponentData(Entity entity) override
-		{
-			std::vector<uint8_t> data;
-			data.resize(sizeof(m_Components[m_RegisteredEntities.size()]));
-			memcpy(data.data(), &m_Components[m_RegisteredEntities.size()], sizeof(m_Components[m_RegisteredEntities.size()]));
-			return data;
-		}
-	private:
-#ifdef COMPONENT_POOL_SIZE
-		std::array<Component, COMPONENT_POOL_SIZE + 1> m_Components = {};
-		std::bitset<COMPONENT_POOL_SIZE> m_RegisteredEntities = { false };
-#else
-		std::array<Component, 8192 + 1> m_Components = {};
-		std::bitset<8192> m_RegisteredEntities = { false };
-#endif
 	};
 }

@@ -45,14 +45,14 @@ namespace Tester
 	};
 	COMPONENT(TransformComponent)
 	{
-		REGISTER_COMPONENT( "{4A34E93D-A5EC-400F-A973-D38F981E2F0E}"_guid);
+		REGISTER_COMPONENT("{4A34E93D-A5EC-400F-A973-D38F981E2F0E}"_guid);
 		float x = 0;
 		float y = 0;
 	};
 
 	COMPONENT(TestComponent)
 	{
-		REGISTER_COMPONENT( "{AA590468-495C-4EB0-BEDD-1950F3631251}"_guid);
+		REGISTER_COMPONENT("{AA590468-495C-4EB0-BEDD-1950F3631251}"_guid);
 		float a = 0;
 		float b = 0;
 		float c = 0;
@@ -61,7 +61,7 @@ namespace Tester
 	TEST_CLASS(ComponentHandlíng)
 	{
 	public:
-		
+
 		TEST_METHOD(AddSingleComponent)
 		{
 			Snowflake::Registry manager;
@@ -104,7 +104,7 @@ namespace Tester
 			Assert::AreEqual(false, manager.HasComponent<TransformComponent>(entity));
 			Assert::AreEqual(true, manager.HasComponent<TestComponent>(entity));
 			manager.DestroyEntity(entity);
-			
+
 			Snowflake::Entity entity2 = manager.CreateEntity();
 			manager.AddComponent<TransformComponent>(entity2);
 			manager.AddComponent<TestComponent>(entity2);
@@ -113,7 +113,7 @@ namespace Tester
 			Assert::AreEqual(true, manager.HasComponent<TransformComponent>(entity2));
 			Assert::AreEqual(false, manager.HasComponent<TestComponent>(entity2));
 			manager.DestroyEntity(entity2);
-			
+
 		}
 
 		TEST_METHOD(GetComponent)
@@ -224,7 +224,7 @@ namespace Tester
 			auto ent = registry.CreateEntity();
 			registry.AddComponent<TransformComponent>(ent);
 			Snowflake::RegistrySerializer serializer(registry);
-			Assert::IsTrue( serializer.Serialize("SingleComponent.ett"));
+			Assert::IsTrue(serializer.Serialize("SingleComponent.ett"));
 		}
 		TEST_METHOD(WriteMultibleComponentsToFile)
 		{
@@ -248,13 +248,37 @@ namespace Tester
 
 		TEST_METHOD(ReadAndWriteMultibleComponentsToFile)
 		{
-			Snowflake::Registry registry;
-			auto ent = registry.CreateEntity();
-			registry.AddComponent<TransformComponent>(ent);
-			registry.AddComponent<TestComponent>(ent);
-			Snowflake::RegistrySerializer serializer(registry);
-			Assert::IsTrue(serializer.Serialize("MultiComponentRead.ett"));
-			Assert::IsTrue(serializer.Deserialize("MultiComponentRead.ett"));
+			{
+				Snowflake::Registry registry;
+				{
+					auto ent = registry.CreateEntity();
+					
+					registry.AddComponent<TestComponent>(ent).a = 10.f;
+				}
+				{
+					auto ent = registry.CreateEntity();
+					registry.AddComponent<TransformComponent>(ent);
+					registry.AddComponent<TestComponent>(ent).a = 5.f;
+				}
+				Snowflake::RegistrySerializer serializer(registry);
+				Assert::IsTrue(serializer.Serialize("MultiComponentRead.ett"));
+			}
+			{
+				Snowflake::Registry DeserializeRegistry;
+				Snowflake::RegistrySerializer serializer(DeserializeRegistry);
+				Assert::IsTrue(serializer.Deserialize("MultiComponentRead.ett"));
+				std::vector<Snowflake::Entity> Entities;
+				DeserializeRegistry.ForEach([&](auto entity)
+					{
+						Entities.push_back(entity);
+						Assert::IsTrue(DeserializeRegistry.HasComponent<TestComponent>(entity));
+					});
+				Assert::AreEqual(10.f, DeserializeRegistry.GetComponent<TestComponent>(Entities[0]).a);
+				Assert::AreEqual(5.f, DeserializeRegistry.GetComponent<TestComponent>(Entities[1]).a);
+				Assert::IsFalse(DeserializeRegistry.HasComponent<TransformComponent>(Entities[0]));
+				Assert::IsTrue(DeserializeRegistry.HasComponent<TransformComponent>(Entities[1]));
+				
+			}
 		}
 	};
 }
