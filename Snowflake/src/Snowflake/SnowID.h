@@ -3,7 +3,8 @@
 #include <cstdint>
 #include <xhash>
 
-
+// From ChunkTreasure1´s Wire ECS system
+// https://github.com/ChunkTreasure1/Wire
 struct SnowID
 {
 	constexpr SnowID()

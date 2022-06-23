@@ -58,7 +58,7 @@ namespace Tester
 		float c = 0;
 	};
 
-	TEST_CLASS(ComponentHandlíng)
+	TEST_CLASS(ComponentHandling)
 	{
 	public:
 

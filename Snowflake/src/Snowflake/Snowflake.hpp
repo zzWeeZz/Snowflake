@@ -10,7 +10,7 @@
 #include "SnowID.h"
 #define COMPONENT(comp) struct comp \
 						
-#define REGISTER_COMPONENT(GUID) const SnowID hashID = GUID;
+#define REGISTER_COMPONENT(GUID) const SnowID hashID = GUID
 
 namespace Snowflake
 {
